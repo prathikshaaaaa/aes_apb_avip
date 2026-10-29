@@ -1,0 +1,45 @@
+module Key_scheduler (
+    input wire crypto_clk, crypto_rstn,
+    input wire mode, 
+    input wire start, zeroize,
+    input wire [127:0] Key,     // Original private key
+    input wire [3:0] Rd_Addr,
+    input wire read_en,
+    output wire [127:0] Roundkey,    // Round keys for each rounds 0-10
+    output wire key_store_done, 
+    output wire key_written
+);
+
+wire key_reg_sel, write_en;
+wire KE_sel;
+wire [3:0] Wr_Addr;
+
+
+Key_Controller Key_Ctrl(.crypto_clk(crypto_clk), 
+                        .crypto_rstn(crypto_rstn), 
+                        .start(start),  
+                        .zeroize(zeroize),
+                        .key_written(key_written),
+                        .KE_sel(KE_sel), 
+                        .Wr_Addr(Wr_Addr), 
+                        .key_store_done(key_store_done), 
+                        .key_reg_sel(key_reg_sel), 
+                        .write_en(write_en)
+                  );
+
+Key_Datapath Key_Dpt(.crypto_clk(crypto_clk), 
+                     .crypto_rstn(crypto_rstn), 
+                     .mode(mode), 
+                     .key_reg_sel(key_reg_sel), 
+                     .KE_sel(KE_sel), 
+                     .write_en(write_en), 
+                     .read_en(read_en), 
+                     .Wr_Addr(Wr_Addr), 
+                     .Rd_Addr(Rd_Addr), 
+                     .Read_data(Roundkey), 
+                     .zeroize(zeroize), 
+                     .key_written(key_written),
+                     .key_store_done(key_store_done),
+                     .Key(Key)
+                );
+endmodule
