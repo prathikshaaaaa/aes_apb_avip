@@ -33,7 +33,6 @@ interface apb_master_driver_bfm (
   endtask
 
   task automatic drive_to_bfm(inout aes_transfer_char_s data_packet);
-    // The proxy calls at a PCLK edge, including a previous transfer's completion.
     psel    <= data_packet.psel;
     penable <= 1'b0;
     paddr   <= data_packet.paddr;
@@ -48,7 +47,7 @@ interface apb_master_driver_bfm (
     if (data_packet.pwrite == READ) begin
       data_packet.prdata = prdata;
     end
-    penable <= 1'b0; // To support back-to-back transfers, PSEL is kept high.If not back-to-back, the proxy calls drive_idle_state().
+    penable <= 1'b0; // Keep PSEL high for a back-to-back transfer.
   endtask
 
 endinterface : apb_master_driver_bfm

@@ -19,9 +19,10 @@ class apb_scoreboard extends uvm_scoreboard;
   protected aes_block_t expected_outputs[$]; // Predicted blocks waiting for readout.
   protected bit [3:0] input_words_seen;  // DATA words written for current block.
   protected bit [3:0] output_words_seen; // Output words read for current block.
-  protected aes_block_t actual_output;   // Output block assembled from DUT reads.
+  protected logic [AES_BLOCK_WIDTH-1:0] actual_output; // Preserve X/Z from DUT reads.
   protected aes_block_t last_output;     // Most recently completed output block for read without new write.
-  protected bit operation_pending;       // START issued-BUSY, but DONE not observed.
+  protected bit operation_pending;       // START issued; awaiting BUSY followed by DONE.
+  protected bit operation_busy_seen;     // BUSY observed for the current START.
   protected bit expected_done;           // DONE status.
   protected bit expected_sec;            // SEC must stay high after an error.
   int matched_count;
@@ -34,13 +35,10 @@ class apb_scoreboard extends uvm_scoreboard;
   extern protected virtual function void reset_operation_state();
   extern protected virtual function void reset_model_state();
   extern protected virtual function void check_status_register(apb_slave_tx tx); // Check BUSY and DONE.
-  extern protected virtual function bit is_valid_address(input bit [7:0] address); // Check APB address range.
-  extern protected virtual function bit is_sensitive_address(input bit [7:0] address); // Check protected registers.
 
   extern protected virtual function void handle_write(apb_slave_tx tx); // Update model from a write.
   extern protected virtual function void queue_input_block(); // Save one completed input block.
   extern protected virtual function void start_operation(); // Begin prediction after START.
-  extern protected virtual function void predict_blocks(); // Predict all queued input blocks.
 
   extern protected virtual function void handle_read(apb_slave_tx tx); // Check register read.
   extern protected virtual function void check_output_word(apb_slave_tx tx); // Check one output word.
@@ -69,6 +67,7 @@ function void apb_scoreboard::reset_operation_state();
   actual_output = '0;
   last_output = '0;
   operation_pending = 0;
+  operation_busy_seen = 0;
   expected_done = 0;
 endfunction : reset_operation_state
 
@@ -103,43 +102,39 @@ function void apb_scoreboard::check_status_register(apb_slave_tx tx);
     return;
   end
 
-  if(done) begin
+  // Allow START synchronization; an old DONE cannot complete this operation.
+  operation_busy_seen |= busy;
+  if(done && operation_busy_seen) begin
     operation_pending = 0;
     expected_done = 1;
   end
-  else if(!busy) begin
+  else if(operation_busy_seen && !busy) begin
     `uvm_error("AES_STATUS", "Pending START reported neither BUSY nor DONE")
   end
 endfunction : check_status_register
-
-function bit apb_scoreboard::is_valid_address(input bit [7:0] address);
-  return (address <= AES_DATA_OUT3_ADDR) && (address % AES_WORD_BYTES == 0);
-endfunction : is_valid_address
-
-function bit apb_scoreboard::is_sensitive_address(input bit [7:0] address);
-  return is_valid_address(address) &&
-         (address != AES_STATUS_ADDR) &&
-         (address < AES_DATA_OUT0_ADDR);
-endfunction : is_sensitive_address
 
 function void apb_scoreboard::write(apb_slave_tx tx);
   bit valid_address;
   bit sensitive_address;
   slave_error_e expected_error;
 
-  if(tx.preset_n !== 1'b1 || tx.crypto_rstn !== 1'b1) begin
+  if(tx.preset_n !== 1'b1) begin
     expected_sec = 0;
     return;
   end
+  if(tx.crypto_rstn !== 1'b1) return;
 
-  // After an error, SEC_VIOLATION must remain high until reset.
-  if(expected_sec && tx.sec_violation !== 1'b1) begin
-    `uvm_error("AES_SECURITY", "SEC_VIOLATION dropped before reset")
+  // Check the previous cycle's security result before handling this transfer.
+  if(tx.sec_violation !== expected_sec) begin
+    `uvm_error("AES_SECURITY", $sformatf(
+      "SEC_VIOLATION expected=%0b actual=%0b", expected_sec, tx.sec_violation))
   end
   if(!(tx.psel === 1'b1 && tx.penable === 1'b1 && tx.pready === 1'b1)) return;
 
-  valid_address = is_valid_address(tx.paddr);
-  sensitive_address = is_sensitive_address(tx.paddr);
+  valid_address = (tx.paddr <= AES_DATA_OUT3_ADDR) &&
+                  (tx.paddr % AES_WORD_BYTES == 0);
+  sensitive_address = valid_address && tx.paddr != AES_STATUS_ADDR &&
+                      tx.paddr < AES_DATA_OUT0_ADDR;
   expected_error = (!valid_address ||
                     (sensitive_address && !tx.pprot[0])) ? ERROR : NO_ERROR;
 
@@ -149,7 +144,11 @@ function void apb_scoreboard::write(apb_slave_tx tx);
       tx.paddr, expected_error, tx.pslverr))
   end
 
-  if(expected_error == ERROR) begin
+  if(expected_error == ERROR || tx.pslverr == ERROR) begin
+    if(tx.pwrite == READ && tx.paddr >= AES_KEY0_ADDR &&
+       tx.paddr <= AES_KEY3_ADDR && tx.prdata !== 32'b0) begin
+      `uvm_error("AES_KEY_READ", "A rejected key read exposed nonzero/unknown data")
+    end
     expected_sec = 1;
     return;
   end
@@ -209,6 +208,8 @@ function void apb_scoreboard::queue_input_block();
 endfunction : queue_input_block
 
 function void apb_scoreboard::start_operation();
+  aes_block_t block_data;
+  aes_block_t prediction;
   if(operation_pending) begin
     `uvm_error("AES_START", "Another START arrived before the previous transaction completed")
     return;
@@ -219,13 +220,7 @@ function void apb_scoreboard::start_operation();
 
   expected_done = 0;
   operation_pending = 1;
-  predict_blocks();
-endfunction : start_operation
-
-function void apb_scoreboard::predict_blocks();
-  aes_block_t block_data;
-  aes_block_t prediction;
-
+  operation_busy_seen = 0;
   while(stored_inputs.size() != 0) begin
     block_data = stored_inputs.pop_front();
     if(expected_outputs.size() == MAX_BLOCKS) begin
@@ -238,7 +233,7 @@ function void apb_scoreboard::predict_blocks();
                                          model.decrypt(block_data, key);
     expected_outputs.push_back(prediction);
   end
-endfunction : predict_blocks
+endfunction : start_operation
 
 function void apb_scoreboard::handle_read(apb_slave_tx tx);
   int word_index;

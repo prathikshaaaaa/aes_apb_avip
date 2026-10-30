@@ -421,63 +421,35 @@ always @(posedge PCLK or negedge PRESETn) begin
 end
 
 
-//always @(*) begin
-//    PRDATA = 32'b0;
-
-//    if (apb_read) begin
-//        case (PADDR)
-
-//            ADDR_DATA_OUT0:
-//                PRDATA = Rx_buffer[127:96];
-
-//            ADDR_DATA_OUT1:
-//                PRDATA = Rx_buffer[95:64];
-
-//            ADDR_DATA_OUT2:
-//                PRDATA = Rx_buffer[63:32];
-
-//            ADDR_DATA_OUT3:
-//                PRDATA = Rx_buffer[31:0];
-
-//            ADDR_STATUS:
-//                PRDATA = {30'b0, BUSY, DONE};
-
-//            default:
-//                PRDATA = 32'b0;
-
-//        endcase
-//    end
-//end
-
 // PRDATA read Transaction
 always @ (posedge PCLK or negedge PRESETn) begin
     if(!PRESETn) begin
-        PRDATA <= 'b0;
+      PRDATA <= 'b0;
     end
     else begin
-        if(apb_read) begin
-            case(PADDR)
-            ADDR_DATA_OUT0: begin
-                PRDATA <= Rx_buffer[127:96];
-            end
-            ADDR_DATA_OUT1: begin
-                PRDATA <= Rx_buffer[95:64];
-            end
-            ADDR_DATA_OUT2: begin
-                PRDATA <= Rx_buffer[63:32];
-            end
-            ADDR_DATA_OUT3: begin
-                PRDATA <= Rx_buffer[31:0];
-            end
-            ADDR_STATUS: begin
-                PRDATA <= {30'd0, BUSY, DONE};
-            end
-            default: begin
-                PRDATA <= 'b0; 
-            end
-            endcase
-        end
+      if(apb_read) begin
+          case(PADDR)
+          ADDR_DATA_OUT0: begin
+              PRDATA <= Rx_buffer[127:96];
+          end
+          ADDR_DATA_OUT1: begin
+              PRDATA <= Rx_buffer[95:64];
+          end
+          ADDR_DATA_OUT2: begin
+              PRDATA <= Rx_buffer[63:32];
+          end
+          ADDR_DATA_OUT3: begin
+              PRDATA <= Rx_buffer[31:0];
+          end
+          ADDR_STATUS: begin
+              PRDATA <= {30'd0, BUSY, DONE};
+          end
+          default: begin
+              PRDATA <= 'b0;
+          end
+          endcase
       end
+    end
 end
 
 

@@ -18,7 +18,6 @@ interface apb_slave_monitor_bfm (
   input logic crypto_rstn,
   input logic sec_violation
 );
-
   task automatic sample_data(output aes_transfer_char_s packet);
     @(posedge pclk);
     packet.psel = psel;

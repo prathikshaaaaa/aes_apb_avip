@@ -70,6 +70,12 @@ module hdl_top;
     .SEC_VIOLATION(intf.sec_violation)
   );
 
+  initial begin
+    if ($test$plusargs("VCD_DUMP")) begin
+      $dumpfile("waveform.vcd");
+      $dumpvars(0, hdl_top);
+    end
+  end
 endmodule : hdl_top
 
 `endif
