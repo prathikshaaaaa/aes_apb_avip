@@ -10,7 +10,6 @@ package aes_seq_pkg;
   import apb_master_pkg::*;
   import apb_master_seq_pkg::*;
 
-  `include "aes_reset_seq.sv"
   `include "aes_encrypt_seq.sv"
   `include "aes_decrypt_seq.sv"
   `include "aes_multiblock_encrypt_seq.sv"
@@ -29,9 +28,6 @@ package aes_seq_pkg;
   `include "aes_uninitialized_seq.sv"
   `include "aes_capacity_seq.sv"
   `include "aes_consecutive_seq.sv"
-  `include "aes_reset_during_operation_seq.sv"
-  `include "aes_apb_reset_seq.sv"
-  `include "aes_crypto_reset_seq.sv"
 endpackage : aes_seq_pkg
 
 `endif

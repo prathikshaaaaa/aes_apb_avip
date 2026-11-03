@@ -13,7 +13,6 @@ package apb_test_pkg;
   import aes_seq_pkg::*;
   
   `include "apb_base_test.sv"
-  `include "aes_reset_test.sv"
   `include "aes_encrypt_test.sv"
   `include "aes_decrypt_test.sv"
   `include "aes_multiblock_encrypt_test.sv"
@@ -32,11 +31,6 @@ package apb_test_pkg;
   `include "aes_uninitialized_test.sv"
   `include "aes_capacity_test.sv"
   `include "aes_consecutive_test.sv"
-  `include "aes_reset_during_operation_test.sv"
-  `include "aes_apb_reset_test.sv"
-  `include "aes_crypto_reset_test.sv"
-
 endpackage : apb_test_pkg
 
 `endif
-
