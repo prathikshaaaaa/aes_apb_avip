@@ -1,0 +1,7 @@
+sim/questa_sim/work/
+sim/questa_sim/logs/
+sim/questa_sim/results/
+sim/questa_sim/coverage_report/
+sim/questa_sim/coverage_merged.ucdb
+sim/questa_sim/transcript
+sim/questa_sim/vsim.wlf
