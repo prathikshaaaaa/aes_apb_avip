@@ -9,6 +9,7 @@ class aes_ref_model extends uvm_object;
   localparam int AES_COLUMNS = 4;
   localparam int AES_STATE_BYTES = 16;
   localparam int AES_KEY_WORDS = 44;
+  typedef bit [7:0] aes_state_t[4][4];
 
   localparam logic [7:0] SBOX [256] = '{
     8'h63,8'h7c,8'h77,8'h7b,8'hf2,8'h6b,8'h6f,8'hc5,8'h30,8'h01,8'h67,8'h2b,8'hfe,8'hd7,8'hab,8'h76,
@@ -33,23 +34,28 @@ class aes_ref_model extends uvm_object;
   extern function new(string name = "aes_ref_model");
   extern virtual function aes_block_t encrypt(input aes_block_t plaintext, input aes_block_t key);
   extern virtual function aes_block_t decrypt(input aes_block_t ciphertext, input aes_block_t key);
-  extern protected virtual function bit [7:0] gf_mul(input bit [7:0] a, input bit [7:0] b);
+  extern protected virtual function bit [7:0] mul2(input bit [7:0] value);
+  extern protected virtual function bit [7:0] mul3(input bit [7:0] value);
+  extern protected virtual function bit [7:0] mul9(input bit [7:0] value);
+  extern protected virtual function bit [7:0] mul11(input bit [7:0] value);
+  extern protected virtual function bit [7:0] mul13(input bit [7:0] value);
+  extern protected virtual function bit [7:0] mul14(input bit [7:0] value);
   extern protected virtual function void expand_key(
     input aes_block_t key, output bit [31:0] words[AES_KEY_WORDS]);
   extern protected virtual function void add_round_key(
-    ref bit [7:0] state[AES_STATE_BYTES],
+    ref aes_state_t state,
     input bit [31:0] words[AES_KEY_WORDS],
     input int round_number);
   extern protected virtual function void sub_bytes(
-    ref bit [7:0] state[AES_STATE_BYTES], input bit inverse);
+    ref aes_state_t state, input bit inverse);
   extern protected virtual function void shift_rows(
-    ref bit [7:0] state[AES_STATE_BYTES], input bit inverse);
+    ref aes_state_t state, input bit inverse);
   extern protected virtual function void mix_columns(
-    ref bit [7:0] state[AES_STATE_BYTES], input bit inverse);
+    ref aes_state_t state, input bit inverse);
   extern protected virtual function void block_to_state(
-    input aes_block_t block, output bit [7:0] state[AES_STATE_BYTES]);
+    input aes_block_t block, output aes_state_t state);
   extern protected virtual function aes_block_t state_to_block(
-    input bit [7:0] state[AES_STATE_BYTES]);
+    input aes_state_t state);
 
 endclass : aes_ref_model
 
@@ -58,23 +64,32 @@ function aes_ref_model::new(string name = "aes_ref_model");
   foreach(SBOX[i]) inverse_sbox[SBOX[i]] = i[7:0];
 endfunction : new
 
-// Multiply bytes in GF(2^8), using the AES polynomial x^8+x^4+x^3+x+1.
-function bit [7:0] aes_ref_model::gf_mul(input bit [7:0] a, input bit [7:0] b);
-  bit [7:0] product;
-  bit [7:0] x;
-  bit [7:0] y;
-  product = 0;
-  x = a;
-  y = b;
-  repeat(8) begin
-    if(y[0]) begin
-      product ^= x;
-    end
-    x = {x[6:0], 1'b0} ^ (x[7] ? 8'h1b : 8'h00);
-    y >>= 1;
-  end
-  return product;
-endfunction : gf_mul
+function bit [7:0] aes_ref_model::mul2(input bit [7:0] value);
+  if (value[7])
+    return (value << 1) ^ 8'h1b;
+  else
+    return value << 1;
+endfunction : mul2
+
+function bit [7:0] aes_ref_model::mul3(input bit [7:0] value);
+  return mul2(value) ^ value;
+endfunction : mul3
+
+function bit [7:0] aes_ref_model::mul9(input bit [7:0] value);
+  return mul2(mul2(mul2(value))) ^ value;
+endfunction : mul9
+
+function bit [7:0] aes_ref_model::mul11(input bit [7:0] value);
+  return mul2(mul2(mul2(value))) ^ mul2(value) ^ value;
+endfunction : mul11
+
+function bit [7:0] aes_ref_model::mul13(input bit [7:0] value);
+  return mul2(mul2(mul2(value))) ^ mul2(mul2(value)) ^ value;
+endfunction : mul13
+
+function bit [7:0] aes_ref_model::mul14(input bit [7:0] value);
+  return mul2(mul2(mul2(value))) ^ mul2(mul2(value)) ^ mul2(value);
+endfunction : mul14
 
 // Expand four key words into eleven round keys (44 words).
 function void aes_ref_model::expand_key(
@@ -90,88 +105,95 @@ function void aes_ref_model::expand_key(
     if(i % 4 == 0) begin
       temp = {SBOX[temp[23:16]], SBOX[temp[15:8]], SBOX[temp[7:0]], SBOX[temp[31:24]]};
       temp ^= {rcon, 24'b0};
-      rcon = gf_mul(rcon, 8'h02);
+      rcon = mul2(rcon);
     end
     words[i] = words[i-4] ^ temp;
   end
 endfunction : expand_key
 
 function void aes_ref_model::add_round_key(
-  ref bit [7:0] state[AES_STATE_BYTES],
+  ref aes_state_t state,
   input bit [31:0] words[AES_KEY_WORDS],
   input int round_number);
   for(int column = 0; column < AES_COLUMNS; column++) begin
     for(int row = 0; row < AES_ROWS; row++) begin
-      state[4*column+row] ^= words[4*round_number+column][31-8*row -: 8];
+      state[row][column] ^= words[4*round_number+column][31-8*row -: 8];
     end
   end
 endfunction : add_round_key
 
 function void aes_ref_model::sub_bytes(
-  ref bit [7:0] state[AES_STATE_BYTES], input bit inverse);
-  foreach(state[i]) begin
-    state[i] = inverse ? inverse_sbox[state[i]] : SBOX[state[i]];
+  ref aes_state_t state, input bit inverse);
+  foreach(state[row, column]) begin
+    state[row][column] = inverse ? inverse_sbox[state[row][column]] :
+                                   SBOX[state[row][column]];
   end
 endfunction : sub_bytes
 
 function void aes_ref_model::shift_rows(
-  ref bit [7:0] state[AES_STATE_BYTES], input bit inverse);
-  bit [7:0] previous[AES_STATE_BYTES];
-  int source_column;
+  ref aes_state_t state, input bit inverse);
+  aes_state_t previous;
   previous = state;
   for(int row = 0; row < AES_ROWS; row++) begin
     for(int column = 0; column < AES_COLUMNS; column++) begin
-      source_column = inverse ? (column+AES_COLUMNS-row)%AES_COLUMNS :
-                                 (column+row)%AES_COLUMNS;
-      state[4*column+row] = previous[4*source_column+row];
+      if (inverse)
+        state[row][column] =
+          previous[row][(column + AES_COLUMNS - row) % AES_COLUMNS];
+      else
+        state[row][column] =
+          previous[row][(column + row) % AES_COLUMNS];
     end
   end
 endfunction : shift_rows
 
 function void aes_ref_model::mix_columns(
-  ref bit [7:0] state[AES_STATE_BYTES], input bit inverse);
+  ref aes_state_t state, input bit inverse);
   bit [7:0] a;
   bit [7:0] b;
   bit [7:0] c;
   bit [7:0] d;
   for(int column = 0; column < AES_COLUMNS; column++) begin
-    a = state[4*column];
-    b = state[4*column+1];
-    c = state[4*column+2];
-    d = state[4*column+3];
+    a = state[0][column];
+    b = state[1][column];
+    c = state[2][column];
+    d = state[3][column];
     if(inverse) begin
-      state[4*column] = gf_mul(a,8'h0e)^gf_mul(b,8'h0b)^gf_mul(c,8'h0d)^gf_mul(d,8'h09);
-      state[4*column+1] = gf_mul(a,8'h09)^gf_mul(b,8'h0e)^gf_mul(c,8'h0b)^gf_mul(d,8'h0d);
-      state[4*column+2] = gf_mul(a,8'h0d)^gf_mul(b,8'h09)^gf_mul(c,8'h0e)^gf_mul(d,8'h0b);
-      state[4*column+3] = gf_mul(a,8'h0b)^gf_mul(b,8'h0d)^gf_mul(c,8'h09)^gf_mul(d,8'h0e);
+      state[0][column] = mul14(a)^mul11(b)^mul13(c)^mul9(d);
+      state[1][column] = mul9(a)^mul14(b)^mul11(c)^mul13(d);
+      state[2][column] = mul13(a)^mul9(b)^mul14(c)^mul11(d);
+      state[3][column] = mul11(a)^mul13(b)^mul9(c)^mul14(d);
     end
     else begin
-      state[4*column] = gf_mul(a,8'h02)^gf_mul(b,8'h03)^c^d;
-      state[4*column+1] = a^gf_mul(b,8'h02)^gf_mul(c,8'h03)^d;
-      state[4*column+2] = a^b^gf_mul(c,8'h02)^gf_mul(d,8'h03);
-      state[4*column+3] = gf_mul(a,8'h03)^b^c^gf_mul(d,8'h02);
+      state[0][column] = mul2(a)^mul3(b)^c^d;
+      state[1][column] = a^mul2(b)^mul3(c)^d;
+      state[2][column] = a^b^mul2(c)^mul3(d);
+      state[3][column] = mul3(a)^b^c^mul2(d);
     end
   end
 endfunction : mix_columns
 
 function void aes_ref_model::block_to_state(
-  input aes_block_t block, output bit [7:0] state[AES_STATE_BYTES]);
-  foreach(state[i]) begin
-    state[i] = block[127-8*i -: 8];
+  input aes_block_t block, output aes_state_t state);
+  for (int column = 0; column < AES_COLUMNS; column++) begin
+    for (int row = 0; row < AES_ROWS; row++) begin
+      state[row][column] = block[127-8*(4*column+row) -: 8];
+    end
   end
 endfunction : block_to_state
 
 function aes_block_t aes_ref_model::state_to_block(
-  input bit [7:0] state[AES_STATE_BYTES]);
+  input aes_state_t state);
   aes_block_t block;
-  foreach(state[i]) begin
-    block[127-8*i -: 8] = state[i];
+  for (int column = 0; column < AES_COLUMNS; column++) begin
+    for (int row = 0; row < AES_ROWS; row++) begin
+      block[127-8*(4*column+row) -: 8] = state[row][column];
+    end
   end
   return block;
 endfunction : state_to_block
 
 function aes_block_t aes_ref_model::encrypt(input aes_block_t plaintext, input aes_block_t key);
-  bit [7:0] state[AES_STATE_BYTES];
+  aes_state_t state;
   bit [31:0] words[AES_KEY_WORDS];
   expand_key(key, words);
   block_to_state(plaintext, state);
@@ -189,7 +211,7 @@ function aes_block_t aes_ref_model::encrypt(input aes_block_t plaintext, input a
 endfunction : encrypt
 
 function aes_block_t aes_ref_model::decrypt(input aes_block_t ciphertext, input aes_block_t key);
-  bit [7:0] state[AES_STATE_BYTES];
+  aes_state_t state;
   bit [31:0] words[AES_KEY_WORDS];
   expand_key(key, words);
   block_to_state(ciphertext, state);

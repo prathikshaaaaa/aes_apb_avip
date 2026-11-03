@@ -445,7 +445,7 @@ always @ (posedge PCLK or negedge PRESETn) begin
               PRDATA <= {30'd0, BUSY, DONE};
           end
           default: begin
-              PRDATA <= 'b0;
+              PRDATA <= 'b0; 
           end
           endcase
       end

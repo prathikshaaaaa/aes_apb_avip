@@ -72,10 +72,11 @@ module hdl_top;
 
   initial begin
     if ($test$plusargs("VCD_DUMP")) begin
-      $dumpfile("waveform.vcd");
+      $dumpfile("waveform.fsdb");
       $dumpvars(0, hdl_top);
     end
   end
+
 endmodule : hdl_top
 
 `endif

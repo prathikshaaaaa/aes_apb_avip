@@ -210,6 +210,7 @@ endfunction : queue_input_block
 function void apb_scoreboard::start_operation();
   aes_block_t block_data;
   aes_block_t prediction;
+
   if(operation_pending) begin
     `uvm_error("AES_START", "Another START arrived before the previous transaction completed")
     return;
