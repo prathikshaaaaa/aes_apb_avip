@@ -58,6 +58,15 @@ class aes_encrypt_seq extends apb_master_base_seq;
     read_reg(AES_DATA_OUT1_ADDR, read_data, NORMAL_SECURE_DATA);
     read_reg(AES_DATA_OUT2_ADDR, read_data, NORMAL_SECURE_DATA);
     read_reg(AES_DATA_OUT3_ADDR, read_data, NORMAL_SECURE_DATA);
+    
+    #2;
+
+    read_reg(AES_DATA_OUT0_ADDR, read_data, NORMAL_SECURE_DATA);
+    read_reg(AES_DATA_OUT1_ADDR, read_data, NORMAL_SECURE_DATA);
+    read_reg(AES_DATA_OUT2_ADDR, read_data, NORMAL_SECURE_DATA);
+    read_reg(AES_DATA_OUT3_ADDR, read_data, NORMAL_SECURE_DATA);
+
+
   endtask : body
 endclass : aes_encrypt_seq
 
